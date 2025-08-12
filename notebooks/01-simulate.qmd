@@ -1,0 +1,76 @@
+---
+title: "01-simulate"
+format: html
+---
+
+## Simulate data
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(faux)
+library(cmdstanr)
+library(brms)
+library(posterior)
+```
+
+```{r}
+between <- list(language = c("English", "Italian", "Polish"))
+within <- list(
+  voicing = c("Voiceless", "Voiced"),
+  syllables = c("Mono", "Di"),
+  repetition = 1:5
+)
+
+mu <- list(
+  English = rep(c(100, 80, 120, 95), each = 5),
+  Italian = rep(c(100, 80, 120, 90), each = 5),
+  Polish = rep(c(100, 80, 120, 86), each = 5)
+)
+
+set.seed(8127)
+sim_data <- sim_design(
+  within, between, 
+  n = 15, mu = mu, sd = 10, r = .5,
+  empirical = FALSE, plot = FALSE, long = TRUE
+) |> 
+  mutate(
+    lang_syl = paste(language, syllables, sep = "_")
+  ) |> 
+  filter(lang_syl %in% c("English_Mono", "English_Di", "Italian_Di", "Polish_Di"))
+```
+
+```{r}
+sim_data |> 
+  ggplot(aes(syllables, y, colour = voicing)) +
+  geom_jitter(position = position_jitterdodge(), alpha = 0.5) +
+  facet_grid(cols = vars(language))
+```
+
+```{r}
+bm_1_dat <- list(
+  N = nrow(sim_data),
+  P = length(unique(sim_data$id)),
+  L = 3,
+  y = log(sim_data$y),
+  voicing = as.numeric(sim_data$voicing) - 1,
+  # di = 0 and mono = 1
+  syllables = as.numeric(as.numeric(sim_data$syllables) == 1),
+  participant = as.numeric(as.factor(sim_data$id)),
+  language = as.numeric(as.factor(sim_data$language))
+)
+```
+
+```{r}
+bm_1_mod <- cmdstan_model("scripts/bm-1.stan")
+```
+
+```{r}
+bm_1_fit <- bm_1_mod$sample(
+  data = bm_1_dat,
+  seed = 2183,
+  chains = 4, parallel_chains = 4
+)
+```
