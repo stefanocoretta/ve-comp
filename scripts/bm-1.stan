@@ -1,15 +1,20 @@
 data {
-  int<lower=1> N;               // total observations
-  int<lower=1> P;               // number of participants
-  int<lower=1> L;               // number of languages (3: IT=2, PL=3, EN=1)
-  
-  vector[N] y;                  // vowel duration
-  
-  array[N] int<lower=0,upper=1> voicing;      // consonant voicing (0=voiceless,1=voiced)
-  array[N] int<lower=0,upper=1> syllables;    // number of syllables (0=di,1=mono)
-  
-  array[N] int<lower=1,upper=P> participant;  // participant ID
-  array[N] int<lower=1,upper=L> language;     // language ID
+  // Number of observations
+  int<lower=1> N;
+  // Number of participants
+  int<lower=1> P;
+  // Number of languages
+  int<lower=1> L;
+  // Vowel duration, logged
+  vector[N] y;
+  // Voicing (0 = voiceless, 1 = voiced)
+  array[N] int<lower=0,upper=1> voicing;
+  // Number of syllables (0 = di, 1 = mono)
+  array[N] int<lower=0,upper=1> syllables;
+  // Participant ID
+  array[N] int<lower=1,upper=P> participant;
+  // Participant's language (1 = English, 2 = Italian, 3 = Polish)
+  array[N] int<lower=1,upper=L> language;
 }
 
 parameters {
