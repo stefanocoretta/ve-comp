@@ -43,35 +43,29 @@ transformed parameters {
     int lang = language[n];
     int part = participant[n];
     
-    // Random intercept for participant
-    real re_intercept_z = z_participant[part];
-    
-    // Random voicing slope for participant (same across languages)
-    real re_voicing_z = z_voicing[part];
-    
     // Random syllables and interaction only for English (lang==1)
-    real re_syllables_z = 0;
-    real re_voicing_syllables_z = 0;
+    real z_syllables_part = 0;
+    real z_voicing_syllables_en_part = 0;
     if (lang == 1) {
-      re_syllables_z = z_syllables_en[part];
-      re_voicing_syllables_z = z_voicing_syllables_en[part];
+      z_syllables_part = z_syllables_en[part];
+      z_voicing_syllables_en_part = z_voicing_syllables_en[part];
     }
     
-    // Fixed effects syllables and interaction only for English
-    real fe_syllables = 0;
-    real fe_interaction = 0;
+    // Effects of mono and mono:voiced for English
+    real b_syllables = 0;
+    real b_voicing_syllables = 0;
     if (lang == 1) {
-      fe_syllables = b_syllables_en * syllables[n];
-      fe_interaction = b_voicing_syllables_en * voicing[n] * syllables[n];
+      b_syllables = b_syllables_en * syllables[n];
+      b_voicing_syllables = b_voicing_syllables_en * voicing[n] * syllables[n];
     }
     
     mu[n] = intercept[lang]
-            + sigma_participant * re_intercept_z
-            + (b_voicing[lang] + sigma_voicing * re_voicing_z) * voicing[n]
-            + fe_syllables
-            + fe_interaction
-            + sigma_syllables_en * re_syllables_z * syllables[n]
-            + sigma_voicing_syllables_en * re_voicing_syllables_z * voicing[n] * syllables[n];
+            + sigma_participant * z_participant[part]
+            + (b_voicing[lang] + sigma_voicing * z_voicing[part]) * voicing[n]
+            + b_syllables
+            + b_voicing_syllables
+            + sigma_syllables_en * z_syllables_part * syllables[n]
+            + sigma_voicing_syllables_en * z_voicing_syllables_en_part * voicing[n] * syllables[n];
   }
 }
 
@@ -98,6 +92,12 @@ model {
   y ~ normal(mu, sigma);
 }
 generated quantities {
-  vector[P] r_intercept;
-  r_intercept = sigma_participant * z_participant;
+  vector[P] r_participant;
+  r_participant = sigma_participant * z_participant;
+  vector[P] r_voicing;
+  r_voicing = sigma_voicing * z_voicing;
+  vector[P] r_syllables_en;
+  r_syllables_en = sigma_syllables_en * z_syllables_en;
+  vector[P] r_voicing_syllables_en;
+  r_voicing_syllables_en = sigma_voicing_syllables_en * z_voicing_syllables_en;
 }
