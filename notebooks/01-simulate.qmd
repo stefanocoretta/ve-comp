@@ -74,3 +74,25 @@ bm_1_fit <- bm_1_mod$sample(
   chains = 4, parallel_chains = 4
 )
 ```
+
+```{r}
+bm_2_mod <- cmdstan_model("scripts/bm-2.stan")
+```
+
+```{r}
+bm_2_fit <- bm_2_mod$sample(
+  data = bm_1_dat,
+  seed = 2183,
+  chains = 4, parallel_chains = 4
+)
+```
+
+```{r}
+bm_2_draws <- bm_2_fit$draws(
+  c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en", "r_participant", "corr_participant")
+) |> as_draws_df()
+```
+
+```{r}
+bm_2_fit$summary(variables = c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en"))
+```
