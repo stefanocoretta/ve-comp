@@ -69,10 +69,10 @@ transformed parameters {
 }
 
 model {
-  intercept ~ normal(0, 10);
-  b_voicing ~ normal(0, 5);
-  b_syllables_en ~ normal(0, 5);
-  b_voicing_syllables_en ~ normal(0, 5);
+  intercept ~ normal(4, 2);
+  b_voicing ~ normal(0, 2);
+  b_syllables_en ~ normal(0, 2);
+  b_voicing_syllables_en ~ normal(0, 2);
 
   // Priors for varying effects
   to_vector(z_participant) ~ normal(0, 1);

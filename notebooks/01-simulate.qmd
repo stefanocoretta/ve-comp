@@ -17,6 +17,8 @@ library(posterior)
 ```
 
 ```{r}
+#| label: sim-data
+
 between <- list(language = c("English", "Italian", "Polish"))
 within <- list(
   voicing = c("Voiceless", "Voiced"),
@@ -43,6 +45,7 @@ sim_data <- sim_design(
 ```
 
 ```{r}
+#| label: sim-data-plot
 sim_data |> 
   ggplot(aes(syllables, y, colour = voicing)) +
   geom_jitter(position = position_jitterdodge(), alpha = 0.5) +
@@ -50,6 +53,7 @@ sim_data |>
 ```
 
 ```{r}
+#| label: bm-1-dat
 bm_1_dat <- list(
   N = nrow(sim_data),
   P = length(unique(sim_data$id)),
@@ -64,10 +68,12 @@ bm_1_dat <- list(
 ```
 
 ```{r}
+#| label: bm-1-mod
 bm_1_mod <- cmdstan_model("scripts/bm-1.stan")
 ```
 
 ```{r}
+#| label: bm-1-fit
 bm_1_fit <- bm_1_mod$sample(
   data = bm_1_dat,
   seed = 2183,
@@ -76,23 +82,31 @@ bm_1_fit <- bm_1_mod$sample(
 ```
 
 ```{r}
+#| label: bm-2-mod
 bm_2_mod <- cmdstan_model("scripts/bm-2.stan")
 ```
 
 ```{r}
+#| label: bm-2-fit
 bm_2_fit <- bm_2_mod$sample(
   data = bm_1_dat,
   seed = 2183,
-  chains = 4, parallel_chains = 4
+  chains = 4, parallel_chains = 4,
+  # ~1-2% divergent transitions, increase adapt delta
+  adapt_delta = 0.99,
+  # 7 transitions hit max treedepth, increase
+  max_treedepth = 15
 )
 ```
 
 ```{r}
+#| label: bm-2-draws
 bm_2_draws <- bm_2_fit$draws(
   c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en", "r_participant", "corr_participant")
 ) |> as_draws_df()
 ```
 
 ```{r}
+#| label: bm-2-summary
 bm_2_fit$summary(variables = c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en"))
 ```

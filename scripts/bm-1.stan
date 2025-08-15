@@ -76,10 +76,10 @@ transformed parameters {
 
 model {
   // Priors
-  intercept ~ normal(0, 10);
-  b_voicing ~ normal(0, 5);
-  b_syllables_en ~ normal(0, 5);
-  b_voicing_syllables_en ~ normal(0, 5);
+  intercept ~ normal(4, 2);
+  b_voicing ~ normal(0, 2);
+  b_syllables_en ~ normal(0, 2);
+  b_voicing_syllables_en ~ normal(0, 2);
   
   z_participant ~ normal(0, 1);
   z_voicing ~ normal(0, 1);
