@@ -1,0 +1,78 @@
+---
+title: "02-modelling"
+format: html
+---
+
+```{r}
+#| label: setup
+#| include: false
+
+library(tidyverse)
+library(cmdstanr)
+library(brms)
+library(posterior)
+library(coretta2018itapol)
+library(coretta2019eng)
+
+```
+
+```{r}
+#| label: data
+
+data("token_measures")
+data("eng_durations")
+
+itapol <- token_measures |> 
+  select(speaker, v1_duration, voicing = c2_phonation, language) |> 
+  mutate(
+    num_syl = "di"
+  )
+
+eng <- eng_durations |> 
+  select(speaker, v1_duration, voicing, num_syl) |> 
+  mutate(language = "English")
+
+ipe <- bind_rows(itapol, eng) |> 
+  drop_na(v1_duration)
+```
+
+```{r}
+#| label: ipe-dat
+
+ipe_dat <- list(
+  N = nrow(ipe),
+  P = length(unique(ipe$speaker)),
+  L = 3,
+  y = log(ipe$v1_duration),
+  # voiceless = 0, voiced = 1
+  voicing = as.numeric(factor(ipe$voicing, levels = c("voiceless", "voiced"))) - 1,
+  # di = 0 and mono = 1
+  syllables = as.numeric(as.numeric(factor(ipe$num_syl, levels = c("mono", "di"))) == 1),
+  participant = as.numeric(as.factor(ipe$speaker)),
+  language = as.numeric(as.factor(ipe$language))
+)
+```
+
+```{r}
+#| label: bm-2-mod
+bm_2_mod <- cmdstan_model("scripts/bm-2.stan")
+```
+
+```{r}
+#| label: bm-2-fit
+bm_2_fit <- bm_2_mod$sample(
+  data = ipe_dat,
+  seed = 2183,
+  chains = 4, parallel_chains = 4,
+  # ~1-2% divergent transitions, increase adapt delta
+  adapt_delta = 0.99,
+  # 7 transitions hit max treedepth, increase
+  max_treedepth = 15
+)
+```
+
+```{r}
+#| label: bm-2-summary
+
+bm_2_summary <- bm_2_fit$summary(variables = c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en"))
+```
