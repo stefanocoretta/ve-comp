@@ -11,6 +11,8 @@ data {
   array[N] int<lower=0,upper=1> voicing;
   // Number of syllables (0 = di, 1 = mono)
   array[N] int<lower=0,upper=1> syllables;
+  // Speech rate (centred)
+  vector[N] rate;
   // Participant ID
   array[N] int<lower=1,upper=P> participant;
   // Participant's language (1 = English, 2 = Italian, 3 = Polish)
@@ -22,87 +24,77 @@ parameters {
   vector[L] intercept;
   // Effect of voiced by language
   vector[L] b_voicing;
-  // Effect of mono and voiced:mono only for English (lang = 1)
+  // Effect of speech rate
+  real b_rate;
+  // Effect of mono in English
   real b_syllables_en;
+  // Effect of mono:syllables in English
   real b_voicing_syllables_en;
-  // Participant varying intercepts
-  vector[P] z_participant;
-  // Participant varying voicing slopes (pooled across languages)
-  vector[P] z_voicing;
-  // Participant varying syllables and interaction slopes only for English (lang = 1)
-  vector[P] z_syllables_en;
-  vector[P] z_voicing_syllables_en;
-  // Varying effect standard deviations
-  real<lower=0> sigma_participant;
-  real<lower=0> sigma_voicing;
-  real<lower=0> sigma_syllables_en;
-  real<lower=0> sigma_voicing_syllables_en;
-  // Residual sd
+
+  // Participant-level varying effects (5: intercept, voicing, syllables_en, voicing_syllables_en, rate)
+  // Standard normal z
+  matrix[P, 5] z_participant;
+  // Standard deviations of participants
+  vector<lower=0>[5] sigma_participant;
+   // Cholesky factor of correlation matrix
+  cholesky_factor_corr[5] L_Rho_participant;
+
+  // Residual SD
   real<lower=0> sigma;
 }
 
 transformed parameters {
+  matrix[P,5] r_participant;
+  r_participant = (z_participant
+                         * diag_pre_multiply(sigma_participant, L_Rho_participant));
+
   vector[N] mu;
-  
   for (n in 1:N) {
     int lang = language[n];
     int part = participant[n];
-    
-    // Random syllables and interaction only for English (lang==1)
-    real z_syllables_part = 0;
-    real z_voicing_syllables_en_part = 0;
-    if (lang == 1) {
-      z_syllables_part = z_syllables_en[part];
-      z_voicing_syllables_en_part = z_voicing_syllables_en[part];
-    }
-    
-    // Effects of mono and mono:voiced for English
-    real b_syllables = 0;
-    real b_voicing_syllables = 0;
-    if (lang == 1) {
-      b_syllables = b_syllables_en * syllables[n];
-      b_voicing_syllables = b_voicing_syllables_en * voicing[n] * syllables[n];
-    }
-    
+
+    // 1 = intercept, 2 = voicing, 3 = syllables_en, 4 = voicing_syllables_en,
+    // 5 = rate
+    real r_intercept = r_participant[part,1];
+    real r_voicing = r_participant[part,2];
+    real r_syllables_en = (lang == 1) ? r_participant[part,3] : 0.0;
+    real r_voicing_syllables_en = (lang == 1) ? r_participant[part,4] : 0.0;
+    real r_rate = r_participant[part,5];
+
+    real b_syllables = (lang == 1) ? b_syllables_en * syllables[n] : 0.0;
+    real b_voicing_syllables = (lang == 1) ? b_voicing_syllables_en * voicing[n] * syllables[n] : 0.0;
+
     mu[n] = intercept[lang]
-            + sigma_participant * z_participant[part]
-            + (b_voicing[lang] + sigma_voicing * z_voicing[part]) * voicing[n]
+            + r_intercept
+            + (b_voicing[lang] + r_voicing) * voicing[n]
             + b_syllables
             + b_voicing_syllables
-            + sigma_syllables_en * z_syllables_part * syllables[n]
-            + sigma_voicing_syllables_en * z_voicing_syllables_en_part * voicing[n] * syllables[n];
+            + (b_rate + r_rate) * rate[n]
+            + r_syllables_en * syllables[n]
+            + r_voicing_syllables_en * voicing[n] * syllables[n];
   }
 }
 
 model {
-  // Priors
   intercept ~ normal(4, 2);
   b_voicing ~ normal(0, 2);
   b_syllables_en ~ normal(0, 2);
   b_voicing_syllables_en ~ normal(0, 2);
-  
-  z_participant ~ normal(0, 1);
-  z_voicing ~ normal(0, 1);
-  
-  z_syllables_en ~ normal(0, 1);
-  z_voicing_syllables_en ~ normal(0, 1);
-  
+  b_rate ~ normal(0, 1);
+
+  // Priors for varying effects
+  to_vector(z_participant) ~ normal(0, 1);
   sigma_participant ~ cauchy(0, 2);
-  sigma_voicing ~ cauchy(0, 2);
-  sigma_syllables_en ~ cauchy(0, 2);
-  sigma_voicing_syllables_en ~ cauchy(0, 2);
+  L_Rho_participant ~ lkj_corr_cholesky(2);
+
+  // Prior for residual SD
   sigma ~ cauchy(0, 2);
-  
+
   // Likelihood
   y ~ normal(mu, sigma);
 }
+
 generated quantities {
-  vector[P] r_participant;
-  r_participant = sigma_participant * z_participant;
-  vector[P] r_voicing;
-  r_voicing = sigma_voicing * z_voicing;
-  vector[P] r_syllables_en;
-  r_syllables_en = sigma_syllables_en * z_syllables_en;
-  vector[P] r_voicing_syllables_en;
-  r_voicing_syllables_en = sigma_voicing_syllables_en * z_voicing_syllables_en;
+  corr_matrix[5] corr_participant;
+  corr_participant = multiply_lower_tri_self_transpose(L_Rho_participant);
 }

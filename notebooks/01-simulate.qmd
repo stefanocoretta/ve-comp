@@ -14,99 +14,156 @@ library(faux)
 library(cmdstanr)
 library(brms)
 library(posterior)
+library(MASS)
 ```
 
 ```{r}
 #| label: sim-data
 
-between <- list(language = c("English", "Italian", "Polish"))
-within <- list(
-  voicing = c("Voiceless", "Voiced"),
-  syllables = c("Mono", "Di"),
-  repetition = 1:5
-)
+P_L <- 15
+L <- 3
+V <- 2
+S <- 2
+P <- P_L * L
+P_id <- 1:P
 
-mu <- list(
-  English = rep(c(100, 80, 120, 95), each = 5),
-  Italian = rep(c(100, 80, 120, 90), each = 5),
-  Polish = rep(c(100, 80, 120, 86), each = 5)
-)
+int_1 <- 4.5
+int_2 <- 4.5
+int_3 <- 4.0
+voi_1 <- 0.3
+voi_2 <- 0.15
+voi_3 <- 0.15
 
-set.seed(8127)
-sim_data <- sim_design(
-  within, between, 
-  n = 15, mu = mu, sd = 10, r = .5,
-  empirical = FALSE, plot = FALSE, long = TRUE
-) |> 
-  mutate(
-    lang_syl = paste(language, syllables, sep = "_")
-  ) |> 
-  filter(lang_syl %in% c("English_Mono", "English_Di", "Italian_Di", "Polish_Di"))
+rat <- -0.3
+syl <- 0.01
+voi_syl <- 0.01
+
+sigma_int <- 0.15
+sigma_voi <- 0.1
+sigma_rat <- 0.005
+sigma_syl <- 0.005
+sigma_voi_syl <- 0.01
+rho <- 0.4
+
+# int/voi mean 0 because it is adjusted by lang specific effects
+Mu <- c(0, 0, rat, syl, voi_syl)
+sigmas <- c(sigma_int, sigma_voi, sigma_rat, sigma_syl, sigma_voi_syl)
+Rho <- matrix(rho, nrow = 5, ncol = 5)
+diag(Rho) <- 1
+Sigma <- diag(sigmas) %*% Rho %*% diag(sigmas)
+
+set.seed(8)
+r_part <- mvrnorm(P, Mu, Sigma)
+
+lang <- rep(1:L, each = P_L)
+
+# Adjust int/voi per language
+r_part[,1] <- r_part[,1] +
+  c(rep(int_1, P_L), rep(int_2, P_L), rep(int_3, P_L))
+r_part[,2] <- r_part[,2] +
+  c(rep(voi_1, P_L), rep(voi_2, P_L), rep(voi_3, P_L))
+
+r_part <- cbind(r_part, lang)
+
+N_P <- 5
+N <- N_P * P * V * S
+voicing <- rep(0:1, N/2)
+syllables <- rep(rep(0:1, each = 2), N/4)
+participant <- rep(P_id, each = N_P * V * S)
+language <- rep(lang, each = N_P * V * S)
+set.seed(7)
+rate_P <- rnorm(P, sd = 0.2)
+rate <- rnorm(N, mean = rep(rate_P, each = N_P * V * S))
+
+mu <- r_part[participant, 1] + r_part[participant, 2] * voicing +
+  r_part[participant, 3] * rate +
+  r_part[participant, 4] * syllables +
+  r_part[participant, 5] * voicing * syllables
+sigma <- 0.05
+
+set.seed(8)
+y <- rnorm(N, mu, sigma)
+
+sim_data <- tibble(
+  y, participant, voicing, rate, language, syllables
+)
 ```
 
 ```{r}
 #| label: sim-data-plot
 sim_data |> 
-  ggplot(aes(syllables, y, colour = voicing)) +
-  geom_jitter(position = position_jitterdodge(), alpha = 0.5) +
-  facet_grid(cols = vars(language))
+  ggplot(aes(rate, y)) +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+sim_data |> 
+  ggplot(aes(as.character(syllables), y, colour = as.character(voicing))) +
+  geom_jitter(position = position_jitterdodge(dodge.width = 1)) +
+  facet_grid(cols = vars(language)) +
+  labs(colour = "Voi")
 ```
 
 ```{r}
-#| label: bm-1-dat
-bm_1_dat <- list(
+#| label: sim-data-simp
+sim_data <- sim_data |> 
+  filter(language == 1 | (language == 2 & syllables == 0) | (language == 3 & syllables == 0))
+```
+
+```{r}
+#| label: sim-data-plot
+
+sim_data |> 
+  ggplot(aes(as.character(syllables), exp(y), colour = as.character(voicing))) +
+  geom_jitter(position = position_jitterdodge(dodge.width = 1)) +
+  facet_grid(cols = vars(language)) +
+  labs(colour = "Voi")
+```
+
+```{r}
+#| label: bm-sim-dat
+bm_sim_dat <- list(
   N = nrow(sim_data),
-  P = length(unique(sim_data$id)),
+  P = length(unique(sim_data$participant)),
   L = 3,
-  y = log(sim_data$y),
-  voicing = as.numeric(sim_data$voicing) - 1,
+  y = sim_data$y,
+  voicing = sim_data$voicing,
+  rate = sim_data$rate,
   # di = 0 and mono = 1
-  syllables = as.numeric(as.numeric(sim_data$syllables) == 1),
-  participant = as.numeric(as.factor(sim_data$id)),
-  language = as.numeric(as.factor(sim_data$language))
+  syllables = sim_data$syllables,
+  participant = sim_data$participant,
+  language = sim_data$language
 )
 ```
 
 ```{r}
-#| label: bm-1-mod
-bm_1_mod <- cmdstan_model("scripts/bm-1.stan")
+#| label: bm-sim-mod
+bm_sim_mod <- cmdstan_model("scripts/bm-1.stan")
 ```
 
 ```{r}
-#| label: bm-1-fit
-bm_1_fit <- bm_1_mod$sample(
-  data = bm_1_dat,
-  seed = 2183,
-  chains = 4, parallel_chains = 4
-)
-```
-
-```{r}
-#| label: bm-2-mod
-bm_2_mod <- cmdstan_model("scripts/bm-2.stan")
-```
-
-```{r}
-#| label: bm-2-fit
-bm_2_fit <- bm_2_mod$sample(
-  data = bm_1_dat,
+#| label: bm-sim-fit
+bm_sim_fit <- bm_sim_mod$sample(
+  data = bm_sim_dat,
   seed = 2183,
   chains = 4, parallel_chains = 4,
   # ~1-2% divergent transitions, increase adapt delta
   adapt_delta = 0.99,
   # 7 transitions hit max treedepth, increase
-  max_treedepth = 15
+  max_treedepth = 12
 )
 ```
 
 ```{r}
-#| label: bm-2-draws
-bm_2_draws <- bm_2_fit$draws(
-  c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en", "r_participant", "corr_participant")
+#| label: bm-sim-draws
+bm_sim_draws <- bm_sim_fit$draws(
+  c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en", "b_rate", "r_participant", "corr_participant")
 ) |> as_draws_df()
 ```
 
 ```{r}
-#| label: bm-2-summary
-bm_2_fit$summary(variables = c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en"))
+#| label: bm-sim-summary
+bm_sim_fit$summary(variables = c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en", "b_rate")) |> 
+  mutate(
+    across(where(is.numeric), ~round(.x, 2))
+  )
 ```
