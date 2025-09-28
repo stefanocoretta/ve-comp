@@ -110,6 +110,6 @@ voi_draws <- bm_1_draws |>
 #| label: fig-voi-draws
 voi_draws |> 
   ggplot(aes(100 * exp(value) - 100, name)) +
-  geom_vline(xintercept = 1) +
+  geom_vline(xintercept = 0) +
   stat_halfeye()
 ```
