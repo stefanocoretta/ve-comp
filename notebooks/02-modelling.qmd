@@ -8,6 +8,7 @@ format: html
 #| include: false
 
 library(tidyverse)
+theme_set(theme_light())
 library(cmdstanr)
 library(brms)
 library(posterior)
@@ -66,15 +67,24 @@ bm_1_mod <- cmdstan_model("scripts/bm-1.stan")
 
 ```{r}
 #| label: bm-1-fit
-bm_1_fit <- bm_1_mod$sample(
-  data = ipe_dat,
-  seed = 2183,
-  chains = 4, parallel_chains = 4,
-  # ~1-2% divergent transitions, increase adapt delta
-  adapt_delta = 0.99,
-  # 7 transitions hit max treedepth, increase
-  max_treedepth = 15
-)
+
+bm_1_fit_file <- "data/cache/bm_1_fit.rds"
+
+if (file.exists(bm_1_fit_file)) {
+  bm_1_fit <- readRDS(bm_1_fit_file)
+} else {
+  bm_1_fit <- bm_1_mod$sample(
+    data = ipe_dat,
+    seed = 2183,
+    chains = 4, parallel_chains = 4,
+    # ~1-2% divergent transitions, increase adapt delta
+    adapt_delta = 0.99,
+    # 7 transitions hit max treedepth, increase
+    max_treedepth = 15
+  )
+  
+  saveRDS(bm_1_fit, bm_1_fit_file)
+}
 ```
 
 ```{r}
@@ -108,8 +118,37 @@ voi_draws <- bm_1_draws |>
 
 ```{r}
 #| label: fig-voi-draws
+
 voi_draws |> 
   ggplot(aes(100 * exp(value) - 100, name)) +
   geom_vline(xintercept = 0) +
-  stat_halfeye()
+  stat_halfeye() +
+  scale_y_discrete(labels = c("English\ndisyll", "English\nmonosyl", "Italian\ndisyll", "Polish\ndisyll")) +
+  labs(
+    x = "Difference in vowel duration (ms)", y = element_blank()
+  )
+```
+
+```{r}
+#| label: bm-1-cri-d
+
+bm_1_draws |> 
+  select(en_di = `b_voicing[1]`, it_di = `b_voicing[2]`, po_di = `b_voicing[3]`, b_voicing_syllables_en) |> 
+  mutate(
+    en_mono = en_di + b_voicing_syllables_en
+  ) |> 
+  select(-b_voicing_syllables_en) |> 
+  mutate(
+    across(everything(), exp),
+    d_po_it = po_di - it_di,
+    d_en_mono_di = en_mono - en_di,
+    d_it_en_di = it_di - en_di,
+    d_po_en_di = po_di - en_di
+  ) |> 
+  pivot_longer(everything()) |> 
+  group_by(name) |> 
+  summarise(
+    q05 = quantile2(value, probs = 0.05) |> round(2),
+    q95 = quantile2(value, probs = 0.95) |> round(2)
+  )
 ```
