@@ -122,11 +122,13 @@ voi_draws <- bm_1_draws |>
 voi_draws |> 
   ggplot(aes(100 * exp(value) - 100, name)) +
   geom_vline(xintercept = 0) +
-  stat_halfeye() +
+  stat_halfeye(.width = c(0.6, 0.9)) +
   scale_y_discrete(labels = c("English\ndisyll", "English\nmonosyl", "Italian\ndisyll", "Polish\ndisyll")) +
   labs(
     x = "Difference in vowel duration (ms)", y = element_blank()
   )
+
+ggsave("img/ve-comp.png", width = 7, height = 4)
 ```
 
 ```{r}
