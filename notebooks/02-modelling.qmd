@@ -151,6 +151,8 @@ bm_1_draws |>
   group_by(name) |> 
   summarise(
     q05 = quantile2(value, probs = 0.05) |> round(2),
-    q95 = quantile2(value, probs = 0.95) |> round(2)
+    q95 = quantile2(value, probs = 0.95) |> round(2),
+    q15 = quantile2(value, probs = 0.15) |> round(2),
+    q85 = quantile2(value, probs = 0.85) |> round(2),
   )
 ```
