@@ -1,15 +1,20 @@
 ---
 title: "01-simulate"
 format: html
+bibliography: references.bib
 ---
 
 ## Simulate data
 
+In this file, I simulate data to test the Stan model which will be used to model the actual data from two pre-existing datasets [@coretta2018l and @coretta2019g].
+
 ```{r}
 #| label: setup
-#| include: false
+#| message: false
+#| warning: false
 
 library(tidyverse)
+theme_set(theme_light())
 library(faux)
 library(cmdstanr)
 library(brms)
@@ -17,9 +22,41 @@ library(posterior)
 library(MASS)
 ```
 
-```{r}
-#| label: sim-data
+## Prepare data
 
+This section simulates vowel duration data.
+The following code sets up the following contextual variables:
+
+-   `P_L` is the number of participants (15) per language.
+
+-   `L` is the number of languages (3, in the real data these are Italian, Polish and Mancunian English).
+
+-   `V` is the number of voicing contexts of the consonant following the vowel (2, voiceless and voiced).
+
+-   `S` is the number of syllabic contexts (2, monosyllabic and disyllabic words).
+
+-   `P` is the total number of participants, i.e.
+    `P_L * L` participants per language times number of languages.
+
+-   `P_id` is a participant ID.
+
+The following parameters define the regression coefficients and the multilevel hyperparameters:
+
+-   `int_1, int_2, int_3` are the intercepts of vowel duration for each language for disyllabic words and voiceless context (we are using logged durations here).
+
+-   `voi_1, voi_2, voi_3` are the coefficients for the difference in duration between voiced and voiceless contexts in the three languages, for disyllabic words.
+
+-   `rat` is the effect of speech rate (same for all languages).
+
+-   `syl` is the effect of monosyllabic words and `voi_syl` is the interaction effect of voiced consonants in monosyllabic words.
+
+-   The `sigma_*` multilevel hyperparameters define the multilevel SDs for participant for each of the regression coefficients.
+    `rho` is the correlation between the multilevel hyperparameters.
+
+```{r}
+#| label: pars
+
+# Contextual vars
 P_L <- 15
 L <- 3
 V <- 2
@@ -27,6 +64,7 @@ S <- 2
 P <- P_L * L
 P_id <- 1:P
 
+# Regression coefficients
 int_1 <- 4.5
 int_2 <- 4.5
 int_3 <- 4.0
@@ -35,27 +73,43 @@ voi_2 <- 0.15
 voi_3 <- 0.15
 
 rat <- -0.3
-syl <- 0.01
-voi_syl <- 0.01
+syl <- 0.1
+voi_syl <- 0.1
 
+# Multilevel hyperparameters
 sigma_int <- 0.15
 sigma_voi <- 0.1
 sigma_rat <- 0.005
 sigma_syl <- 0.005
 sigma_voi_syl <- 0.01
 rho <- 0.4
+```
 
-# int/voi mean 0 because it is adjusted by lang specific effects
+With the regression coefficients and hyperparameters we can simulate participant specific effects in `r_part`.
+`Sigma` is a variance-covariance matrix needed to simulate from a multivariate Gaussian distribution with `mvnorm()`.
+Since the coefficients of intercept `int_*` and voicing `voi_*` are language specific, we set their mean to 0 in `Mu`, so `r_part` has participant deviations from their language specific effect.
+
+```{r}
+#| label: part-effects
+
+# int/voi mean = 0 because it is adjusted by lang specific effects below
 Mu <- c(0, 0, rat, syl, voi_syl)
 sigmas <- c(sigma_int, sigma_voi, sigma_rat, sigma_syl, sigma_voi_syl)
+
 Rho <- matrix(rho, nrow = 5, ncol = 5)
 diag(Rho) <- 1
 Sigma <- diag(sigmas) %*% Rho %*% diag(sigmas)
 
 set.seed(8)
 r_part <- mvrnorm(P, Mu, Sigma)
+```
 
-lang <- rep(1:L, each = P_L)
+Now we can adjust the intercept and voicing effects for each participant depending on their language.
+We assign the first `P_L` participants to language 1, the second to language 2 and the third to language 3.
+We add a language index `lang` to `r_part`.
+
+```{r}
+#| label: lang
 
 # Adjust int/voi per language
 r_part[,1] <- r_part[,1] +
@@ -63,7 +117,16 @@ r_part[,1] <- r_part[,1] +
 r_part[,2] <- r_part[,2] +
   c(rep(voi_1, P_L), rep(voi_2, P_L), rep(voi_3, P_L))
 
+# Language index
+lang <- rep(1:L, each = P_L)
 r_part <- cbind(r_part, lang)
+```
+
+Now we set up the columns for the data.
+We also simulate a different baseline speech rate for each participant and simulate small rate deviations for each repetition.
+
+```{r}
+#| label: cols
 
 N_P <- 5
 N <- N_P * P * V * S
@@ -71,9 +134,18 @@ voicing <- rep(0:1, N/2)
 syllables <- rep(rep(0:1, each = 2), N/4)
 participant <- rep(P_id, each = N_P * V * S)
 language <- rep(lang, each = N_P * V * S)
+
 set.seed(7)
 rate_P <- rnorm(P, sd = 0.2)
 rate <- rnorm(N, mean = rep(rate_P, each = N_P * V * S))
+
+```
+
+We can now derive the mean of vowel duration `mu` depending on the predictors.
+Finally we bind everything into a tibble in `sim_data`.
+
+```{r}
+#| label: sim-data
 
 mu <- r_part[participant, 1] + r_part[participant, 2] * voicing +
   r_part[participant, 3] * rate +
@@ -89,22 +161,34 @@ sim_data <- tibble(
 )
 ```
 
+### Plot
+
 ```{r}
-#| label: sim-data-plot
-sim_data |> 
-  ggplot(aes(rate, y)) +
-  geom_point() +
-  geom_smooth(method = "lm")
+#| label: rate-plot
 
 sim_data |> 
-  ggplot(aes(as.character(syllables), y, colour = as.character(voicing))) +
-  geom_jitter(position = position_jitterdodge(dodge.width = 1)) +
-  facet_grid(cols = vars(language)) +
-  labs(colour = "Voi")
+  ggplot(aes(rate, y)) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(method = "lm")
 ```
 
 ```{r}
+#| label: voi-lang-syl-plot
+
+sim_data |> 
+  ggplot(aes(as.character(syllables), y, colour = as.character(voicing))) +
+  geom_jitter(position = position_jitterdodge(dodge.width = 0.75), alpha = 0.75) +
+  facet_grid(cols = vars(language)) +
+  labs(colour = "Voicing", x = "Number of syllables", y = "Vowel duration (logged ms)") +
+  scale_color_brewer(type = "qual")
+```
+
+The real data we will analyse in `02-modelling.qmd` has mono and disyllabic words in English but only disyllabic words in Italian and Polish.
+We remove the missing conditions in the simulated data to test the bespoke Stan model.
+
+```{r}
 #| label: sim-data-simp
+
 sim_data <- sim_data |> 
   filter(language == 1 | (language == 2 & syllables == 0) | (language == 3 & syllables == 0))
 ```
@@ -114,13 +198,20 @@ sim_data <- sim_data |>
 
 sim_data |> 
   ggplot(aes(as.character(syllables), exp(y), colour = as.character(voicing))) +
-  geom_jitter(position = position_jitterdodge(dodge.width = 1)) +
+  geom_jitter(position = position_jitterdodge(dodge.width = 1), alpha = 0.75) +
   facet_grid(cols = vars(language)) +
-  labs(colour = "Voi")
+  labs(colour = "Voicing", x = "Number of syllables", y = "Vowel duration (logged ms)") +
+  scale_color_brewer(type = "qual")
 ```
+
+## Model with Stan
+
+First we prepare the data for Stan (it needs to be a list with variables that match the model).
+You can find the Stan model in `scripts/bm-1.stan`.
 
 ```{r}
 #| label: bm-sim-dat
+
 bm_sim_dat <- list(
   N = nrow(sim_data),
   P = length(unique(sim_data$participant)),
@@ -135,22 +226,36 @@ bm_sim_dat <- list(
 )
 ```
 
+The following code compiles the Stan file into an executable model.
+The executable is saved as `scripts/bm-1` so you might not need to recompile it (running the code will just reread the compiled model).
+The model was compiled with CmdStan 2.38.0 (if you have a different version you might have to recompile the model).
+
 ```{r}
 #| label: bm-sim-mod
+
 bm_sim_mod <- cmdstan_model("scripts/bm-1.stan")
 ```
 
 ```{r}
 #| label: bm-sim-fit
-bm_sim_fit <- bm_sim_mod$sample(
-  data = bm_sim_dat,
-  seed = 2183,
-  chains = 4, parallel_chains = 4,
-  # ~1-2% divergent transitions, increase adapt delta
-  adapt_delta = 0.99,
-  # 7 transitions hit max treedepth, increase
-  max_treedepth = 12
-)
+
+mod <- "data/cache/bm_sim_fit.rds"
+
+if (file.exists(mod)) {
+  bm_sim_fit <- readRDS(mod)
+} else {
+ bm_sim_fit <- bm_sim_mod$sample(
+    data = bm_sim_dat,
+    seed = 2183,
+    chains = 4, parallel_chains = 4,
+    # ~1-2% divergent transitions, increase adapt delta
+    adapt_delta = 0.99,
+    # 7 transitions hit max treedepth, increase
+    max_treedepth = 12
+  )
+ bm_sim_fit$draws()
+ saveRDS(bm_sim_fit, mod)
+}
 ```
 
 ```{r}
@@ -159,6 +264,8 @@ bm_sim_draws <- bm_sim_fit$draws(
   c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en", "b_rate", "r_participant", "corr_participant")
 ) |> as_draws_df()
 ```
+
+The parameters values are recovered quite well.
 
 ```{r}
 #| label: bm-sim-summary
