@@ -3,9 +3,19 @@ title: "02-modelling"
 format: html
 ---
 
+## Read data
+
+In this file, we model the actual data from [@coretta2018l and @coretta2019g] using the model tested in [Simulate](01-simulate.qmd).
+The data is part of two R packages:
+
+-   <https://github.com/stefanocoretta/coretta2018itapol>
+
+-   <https://github.com/stefanocoretta/coretta2019eng>
+
 ```{r}
 #| label: setup
-#| include: false
+#| message: false
+#| warning: false
 
 library(tidyverse)
 theme_set(theme_light())
@@ -15,8 +25,13 @@ library(posterior)
 library(coretta2018itapol)
 library(coretta2019eng)
 library(ggdist)
-
 ```
+
+The data comes from two studies run as part of my PhD (<https://stefanocoretta.github.io/phd-thesis/>).
+Note that the studies were run separately and in sequence, so that cross-linguistic comparison was only an objective in the Italian/Polish data but not across English.
+This means that while Italian and Polish have data from phonologically comparable contexts, English uses different contexts.
+
+The following code loads the relevant data from the two packages and joins the data into a single tibble `ipe`.
 
 ```{r}
 #| label: data
@@ -41,6 +56,48 @@ eng <- eng_durations |>
 ipe <- bind_rows(itapol, eng) |> 
   drop_na(v1_duration)
 ```
+
+Here's a breakdown of number of participants per language.
+
+```{r}
+#| label: n-speaker
+
+ipe |> 
+  distinct(language, speaker) |> 
+  count(language)
+```
+
+Participants read target words in frame sentences.
+The target words were:
+
+-   Italian and Polish: ˈC~1~VC~2~V where C~1~ is /p/ and C~2~ is one of /t, k, d, ɡ/ and V is one of /a, o, u/ (*pata*, *pada*, *poto*, *podo*, ...).
+
+-   English: ˈtVC~2~(əs) where V is one of /iː, ɜː, ɑː/ and C~2~ is one of /p, k, b, ɡ/ to form disyllabic and monosyllabic words (*teepus*, *teebus*, *teep*, *teeb*, ...).
+
+Given that the design is not fully crossed for all languages in terms of consonant place and vowels, the current analysis focuses on average voicing effects (across vowels and places).
+
+Here is a breakdown of number of observations per voicing $\times$ number of syllables (only English has mono- and disyllabic data):
+
+```{r}
+#| label: n-obs
+
+table(ipe$voicing, ipe$language, ipe$num_syl)
+```
+
+## Plot data
+
+```{r}
+#| label: ipe-v1
+#| warning: false
+
+ipe |> 
+  ggplot(aes(voicing, v1_duration)) +
+  geom_violin() +
+  geom_jitter(alpha = 0.25, width = 0.1) +
+  facet_grid(cols = vars(language), rows = vars(num_syl))
+```
+
+## Model data
 
 ```{r}
 #| label: ipe-dat
