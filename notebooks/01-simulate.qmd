@@ -236,6 +236,93 @@ The model was compiled with CmdStan 2.38.0 (if you have a different version you 
 bm_sim_mod <- cmdstan_model("scripts/bm-1.stan")
 ```
 
+An explanation of the model follows.
+
+-   $n$ is the observation index.
+
+-   $y_n$ is the outcome (logged vowel duration).
+
+-   $\ell_n$ is the language (1, 2, 3).
+
+-   $p$ is the participant index.
+
+-   $v_n$ is voicing (0 = voiceless, 1 = voiced).
+
+-   $s_n$ is number of syllables (0 = disyllabic, 1 = monosyllabic).
+
+-   $r_n$ is centred speech rate.
+
+We define the distribution of the outcome:
+
+$$
+\begin{align}y_n &\sim Gaussian(\mu_n, \sigma) \\
+\mu_n &= \alpha_{\ell_n} + u_{p(n),1} \\
+&\quad + \bigl(\beta^{(v)}_{\ell_n} + u_{p(n),2}\bigr) v_n \\
+&\quad + \bigl(\beta^{(r)} + u_{p(n),5}\bigr) r_n \\
+&\quad + \mathbb{1}[\ell_n = 1]\Big[\beta^{(s)} s_n + \beta^{(vs)} v_n s_n\Big] \\
+&\quad + \mathbb{1}[\ell_n = 1]\Big[u_{p(n),3} s_n + u_{p(n),4} v_n s_n\Big]
+\end{align}
+$$
+
+-   $\alpha_{\ell_n}$ are language-specific intercepts and $u_{p(n),1}$ are participant-specific intercept adjustments (partial pooling).
+
+-   $\beta^{(v)}_{\ell_n}$ is the language-specific coefficient of voicing (difference between voiced and voiceless) of and $u_{p(n),2}$ are participant-specific adjustments for the effect of voicing (partial pooling).
+
+-   $\beta^{(r)}$ is the cofficient of centred speech rate and $u_{p(n),5}$ are participant-specific adjustments for the effect of rate (partial pooling).
+
+-   $\mathbb{1}[\ell_n = 1]$ is an indicator function (it returns 1 when language = 1, otherwise 0).
+    This means that the following terms are applied only for language 1.
+    This is because the real data contains monosyllabic data only in English (here coded as language 1).
+
+-   $\beta^{(s)}$ is the coefficient for number of syllables (difference between monosyllabic and disyllabic words in language 1, when voicing = voiceless) and $\beta^{(vs)}$ is the interaction coefficient for number of syllables and voicing in language 1.
+
+-   $u_{p(n),3}$ and $u_{p(n),4}$ are the participant-specific adjustments of the effect of number of syllables and the interaction syllables \* voicing (both partially pooled).
+
+Here's how the participant-level varying effects (partial pooling) is set up.
+For each participant $p$:
+
+$$
+\begin{align}
+\mathbf{u}_p &=\begin{pmatrix}u_{p,1} \\
+u_{p,2} \\
+u_{p,3} \\
+u_{p,4} \\
+u_{p,5}
+\end{pmatrix} \sim Gaussian(\mathbf{0}, \Sigma)\end{align}
+$$
+
+Where the subscript index intercept, voicing, syllables (language 1 only), syllables $\times$ voicing (language 1 only), speech rate.
+And the variance-covariance matrix:
+
+$$
+\begin{align}
+\Sigma &= \mathrm{diag}(\boldsymbol{\sigma}) \, \mathbf{R} \, \mathrm{diag}(\boldsymbol{\sigma})
+\end{align}
+$$
+
+The model uses the following priors:
+
+$$
+\begin{align}
+\alpha_\ell &\sim Gaussian(4, 2) \\
+\beta^{(v)}_\ell &\sim Gaussian(0, 2) \\
+\beta^{(r)} &\sim Gaussian(0, 1) \\
+\beta^{(s)} &\sim Gaussian(0, 2) \\
+\beta^{(vs)} &\sim Gaussian(0, 2) \\
+\sigma_k &\sim \text{Cauchy}^+(0, 2), \quad k = 1, \dots, 5 \\
+\mathbf{R} &\sim \text{LKJ}(2) \\
+\sigma &\sim \text{Cauchy}^+(0, 2) \\
+\end{align}
+$$
+
+::: callout-caution
+## TODO
+
+Prior predictive checks, although the priors are similar to priors I used before on the same data, but Italian/Polish only.
+:::
+
+The following code runs sampling with the simulated data.
+
 ```{r}
 #| label: bm-sim-fit
 
@@ -258,8 +345,11 @@ if (file.exists(mod)) {
 }
 ```
 
+We extract the MCMC draws.
+
 ```{r}
 #| label: bm-sim-draws
+
 bm_sim_draws <- bm_sim_fit$draws(
   c("intercept", "b_voicing", "b_syllables_en", "b_voicing_syllables_en", "b_rate", "r_participant", "corr_participant")
 ) |> as_draws_df()
