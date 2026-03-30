@@ -1,6 +1,7 @@
 ---
 title: "02-modelling"
 format: html
+bibliography: references.bib
 ---
 
 ## Read data
@@ -67,7 +68,7 @@ ipe |>
   count(language)
 ```
 
-Participants read target words in frame sentences.
+Participants read target words in frame sentences (the target word was in broad focus).
 The target words were:
 
 -   Italian and Polish: ˈC~1~VC~2~V where C~1~ is /p/ and C~2~ is one of /t, k, d, ɡ/ and V is one of /a, o, u/ (*pata*, *pada*, *poto*, *podo*, ...).
@@ -93,11 +94,15 @@ table(ipe$voicing, ipe$language, ipe$num_syl)
 ipe |> 
   ggplot(aes(voicing, v1_duration)) +
   geom_violin() +
-  geom_jitter(alpha = 0.25, width = 0.1) +
-  facet_grid(cols = vars(language), rows = vars(num_syl))
+  geom_jitter(alpha = 0.05, width = 0.1) +
+  facet_grid(cols = vars(language), rows = vars(num_syl)) +
+  labs(y = "V1 duration (ms)")
 ```
 
 ## Model data
+
+We will model the data using the same model tested in [Simulate](01-simulate.qmd).
+First we create a list object with the data.
 
 ```{r}
 #| label: ipe-dat
@@ -116,6 +121,8 @@ ipe_dat <- list(
   language = as.numeric(as.factor(ipe$language))
 )
 ```
+
+We compile the model as needed.
 
 ```{r}
 #| label: bm-1-mod
@@ -144,6 +151,8 @@ if (file.exists(bm_1_fit_file)) {
 }
 ```
 
+The model summary.
+
 ```{r}
 #| label: bm-1-summary
 
@@ -151,6 +160,7 @@ bm_1_summary <- bm_1_fit$summary(variables = c("intercept", "b_voicing", "b_syll
   mutate(
     across(where(is.numeric), ~round(.x, 2))
   )
+bm_1_summary
 ```
 
 ```{r}
@@ -162,8 +172,12 @@ bm_1_draws <- bm_1_fit$draws(
 
 ```
 
+The following code obtains draws for the effect of voicing on vowel duration (voiced - voiceless) in Italian, Polish and English disyllabic words and in English monosyllabic words.
+
 ```{r}
 #| label: voi-draws
+#| warning: false
+
 voi_draws <- bm_1_draws |> 
   select(en_di = `b_voicing[1]`, it_di = `b_voicing[2]`, po_di = `b_voicing[3]`, b_voicing_syllables_en) |> 
   mutate(
@@ -184,6 +198,8 @@ voi_draws <- bm_1_draws |>
   )
 ```
 
+We can plot the expected difference in vowel duration.
+
 ```{r}
 #| label: fig-voi-draws
 
@@ -201,10 +217,15 @@ voi_draws |>
 ggsave("img/ve-comp.png", width = 7, height = 4)
 ```
 
-```{r}
-#| label: bm-1-cri-d
+The following calculates ratios between vowels followed by voiced stops and vowels followed by voiceless stops.
+A ratio of 1 means no difference in duration, ratios greater than 1 means vowels in the voiced condition are longer and ratios smaller than 1 mean vowels in the voiced condition are shorter.
+We get the 90% and 70% CrIs.
 
-bm_1_draws |> 
+```{r}
+#| label: bm-1-cri
+#| warning: false
+
+bm_1_ratios <- bm_1_draws |> 
   select(en_di = `b_voicing[1]`, it_di = `b_voicing[2]`, po_di = `b_voicing[3]`, b_voicing_syllables_en) |> 
   mutate(
     en_mono = en_di + b_voicing_syllables_en
@@ -212,11 +233,9 @@ bm_1_draws |>
   select(-b_voicing_syllables_en) |> 
   mutate(
     across(everything(), exp),
-    d_po_it = po_di - it_di,
-    d_en_mono_di = en_mono - en_di,
-    d_it_en_di = it_di - en_di,
-    d_po_en_di = po_di - en_di
-  ) |> 
+  )
+
+bm_1_ratios |> 
   pivot_longer(everything()) |> 
   group_by(name) |> 
   summarise(
@@ -226,3 +245,30 @@ bm_1_draws |>
     q85 = quantile2(value, probs = 0.85) |> round(2),
   )
 ```
+
+Finally we compare the ratios between the different language/syllable conditions.
+
+```{r}
+#| label: bm-1-cri-d
+
+bm_1_ratios |>
+  mutate(
+    d_po_it = po_di - it_di,
+    d_en_mono_di = en_mono - en_di,
+    d_it_en_di = it_di - en_di,
+    d_po_en_di = po_di - en_di
+  ) |> 
+  select(d_po_it:d_po_en_di) |> 
+  pivot_longer(everything()) |> 
+  group_by(name) |> 
+  summarise(
+    q05 = quantile2(value, probs = 0.05) |> round(2),
+    q95 = quantile2(value, probs = 0.95) |> round(2),
+    q15 = quantile2(value, probs = 0.15) |> round(2),
+    q85 = quantile2(value, probs = 0.85) |> round(2),
+  )
+```
+
+At 90% probability, the difference in ratio for English mono- vs disyllabic words is 0.02 to 0.1, for English vs Italian disyllabic words the difference is -0.09 to +0.01 and so on.
+At 70% probability, the difference in ratio suggests that Italian and Polish have a possibly similar voicing effect (or if different, that the difference is relatively smaller), while their effect is smaller than English (disyllabic and monosyllabic words), and finally that the effect is larger in mono than in disyllabic words in English.
+The 70% CrI are relatively wide so it is not possible at this stage to confidently estimate the magnitude of the differences.

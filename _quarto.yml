@@ -3,6 +3,30 @@ project:
   execute-dir: project
   output-dir: docs
 
+website:
+  title: "QML"
+  navbar:
+    background: dark
+    tools:
+      - icon: github
+        href: "https://github.com/stefanocoretta/ve-comp"
+    left:
+      - href: index.qmd
+        text: Home
+      - text: Notebooks
+        menu: 
+          - href: notebooks/01-simulate.qmd
+            text: Simulate
+          - href: notebooks/02-modelling.qmd
+            text: Model
+
+format:
+  html:
+    theme: united
+    toc: true
+    df-print: paged
+    number-sections: true
+
 execute:
   freeze: auto
 
