@@ -4,7 +4,7 @@ project:
   output-dir: docs
 
 website:
-  title: "QML"
+  title: "VoiComp"
   navbar:
     background: dark
     tools:
